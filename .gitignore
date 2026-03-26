@@ -55,6 +55,7 @@ dkms.conf
 
 # Documentos internos de requerimientos
 *REQUIREMENTS.md
+*PLAN.md
 
 # Zig cache
 .zig-cache/

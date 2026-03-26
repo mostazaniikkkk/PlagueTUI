@@ -1,6 +1,7 @@
 #include "../include/plague_app.h"
 #include "widgets.h"
 #include "render.h"
+#include "focus.h"
 
 #include "plague_terminal.h"
 #include "plague_events.h"
@@ -20,15 +21,106 @@ static int g_quit_flag  = 0;
 static int g_headless   = 0;
 
 /* ---------------------------------------------------------------------------
+ * Click bindings
+ * --------------------------------------------------------------------------- */
+
+#define PA_MAX_CLICK_BINDS 64
+#define PA_CLICK_BID_BASE  0x8000   /* rango separado de key bindings */
+
+typedef struct { int wid; int bid; } ClickBind;
+static ClickBind g_click_binds[PA_MAX_CLICK_BINDS];
+static int       g_click_count = 0;
+static int       g_next_click_bid = PA_CLICK_BID_BASE;
+
+static int g_last_mouse_x = 0;
+static int g_last_mouse_y = 0;
+
+/* ---------------------------------------------------------------------------
+ * Helpers internos: sincronización de estado de focus/hover
+ * --------------------------------------------------------------------------- */
+
+/* Actualiza PA_STATE_FOCUSED en todos los widgets según el foco actual. */
+static void sync_focus_states(void)
+{
+    int focused = pa_focus_get_wid();
+    for (int i = 0; i < g_widget_count; i++) {
+        if (!g_widgets[i].used) continue;
+        if (i == focused)
+            g_widgets[i].state |= PA_STATE_FOCUSED;
+        else
+            g_widgets[i].state &= (uint8_t)~PA_STATE_FOCUSED;
+    }
+}
+
+void pa_mouse_pos(int *x, int *y)
+{
+    if (x) *x = g_last_mouse_x;
+    if (y) *y = g_last_mouse_y;
+}
+
+/* Actualiza PA_STATE_HOVER según la posición del mouse. */
+static void update_hover(int mx, int my)
+{
+    g_last_mouse_x = mx;
+    g_last_mouse_y = my;
+    for (int i = 0; i < g_widget_count; i++) {
+        if (!g_widgets[i].used) continue;
+        TG_Region r = pa_last_region(i);
+        if (mx >= r.x && mx < r.x + r.width &&
+            my >= r.y && my < r.y + r.height)
+            g_widgets[i].state |= PA_STATE_HOVER;
+        else
+            g_widgets[i].state &= (uint8_t)~PA_STATE_HOVER;
+    }
+}
+
+/* Hit-test: busca el click binding para el widget más superficial en (mx, my).
+ * Primero prueba overlays (z superior), luego widgets normales.
+ * También transfiere el foco al widget clickeado si es focusable. */
+static int dispatch_click(int mx, int my)
+{
+    /* Dos pasadas: overlays primero */
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = g_widget_count - 1; i >= 0; i--) {
+            if (!g_widgets[i].used || !g_widgets[i].visible) continue;
+            if (pass == 0 && !g_widgets[i].overlay) continue;
+            if (pass == 1 &&  g_widgets[i].overlay) continue;
+
+            TG_Region r = pa_last_region(i);
+            if (mx < r.x || mx >= r.x + r.width)  continue;
+            if (my < r.y || my >= r.y + r.height) continue;
+
+            /* Transferir foco si el widget es focusable */
+            if (g_widgets[i].focusable && !g_widgets[i].disabled) {
+                pa_focus_set_wid(i);
+                sync_focus_states();
+                pa_render();
+            }
+
+            /* Buscar click binding registrado */
+            for (int j = 0; j < g_click_count; j++) {
+                if (g_click_binds[j].wid == i)
+                    return g_click_binds[j].bid;
+            }
+            return 0;  /* hit sin binding */
+        }
+    }
+    return 0;
+}
+
+/* ---------------------------------------------------------------------------
  * Ciclo de vida
  * --------------------------------------------------------------------------- */
 
 static void common_init(void)
 {
     pa_widgets_init();
+    pa_focus_init();
     pe_reset_all();
-    g_css_handle = 0;
-    g_quit_flag  = 0;
+    g_css_handle     = 0;
+    g_quit_flag      = 0;
+    g_click_count    = 0;
+    g_next_click_bid = PA_CLICK_BID_BASE;
 }
 
 int pa_init(void)
@@ -110,7 +202,7 @@ int pa_widget_add(const char *type, const char *id,
     /* Árbol de eventos */
     int ev_parent = (parent_id >= 0) ? parent_id : PE_NO_PARENT;
     int ev_node   = pe_tree_add(ev_parent);
-    (void)ev_node;  /* mismo índice que wid si se añaden en orden */
+    (void)ev_node;
 
     return wid;
 }
@@ -147,9 +239,66 @@ void pa_widget_set_padding(int wid, TG_Spacing padding)
     g_widgets[wid].padding = padding;
 }
 
+void pa_widget_set_focusable(int wid, int focusable)
+{
+    if (wid < 0 || wid >= g_widget_count) return;
+    g_widgets[wid].focusable = (uint8_t)(focusable ? 1 : 0);
+}
+
+void pa_widget_set_disabled(int wid, int disabled)
+{
+    if (wid < 0 || wid >= g_widget_count) return;
+    g_widgets[wid].disabled = (uint8_t)(disabled ? 1 : 0);
+    if (disabled)
+        g_widgets[wid].state |= PA_STATE_DISABLED;
+    else
+        g_widgets[wid].state &= (uint8_t)~PA_STATE_DISABLED;
+}
+
+void pa_widget_set_overlay(int wid, int overlay)
+{
+    if (wid < 0 || wid >= g_widget_count) return;
+    g_widgets[wid].overlay = (uint8_t)(overlay ? 1 : 0);
+}
+
+void pa_widget_scroll_to(int wid, int x, int y)
+{
+    if (wid < 0 || wid >= g_widget_count) return;
+    g_widgets[wid].scroll_x = x;
+    g_widgets[wid].scroll_y = y;
+}
+
 TG_Region pa_widget_region(int wid)
 {
     return pa_last_region(wid);
+}
+
+/* ---------------------------------------------------------------------------
+ * Foco
+ * --------------------------------------------------------------------------- */
+
+void pa_focus_set(int wid)
+{
+    if (wid < -1 || wid >= g_widget_count) return;
+    pa_focus_set_wid(wid);
+    sync_focus_states();
+}
+
+int pa_focus_get(void)
+{
+    return pa_focus_get_wid();
+}
+
+void pa_focus_next(void)
+{
+    pa_focus_advance(+1);
+    sync_focus_states();
+}
+
+void pa_focus_prev(void)
+{
+    pa_focus_advance(-1);
+    sync_focus_states();
 }
 
 /* ---------------------------------------------------------------------------
@@ -168,6 +317,40 @@ void pa_render(void)
 int pa_bind_key(int wid, int key, int mods)
 {
     return pe_bind_key(wid, key, mods);
+}
+
+int pa_bind_click(int wid)
+{
+    if (wid < 0 || wid >= g_widget_count) return 0;
+    if (g_click_count >= PA_MAX_CLICK_BINDS) return 0;
+    int bid = g_next_click_bid++;
+    g_click_binds[g_click_count].wid = wid;
+    g_click_binds[g_click_count].bid = bid;
+    g_click_count++;
+    return bid;
+}
+
+/* ---------------------------------------------------------------------------
+ * Timers
+ * --------------------------------------------------------------------------- */
+
+int pa_timer_create(int interval_ms, int repeat)
+{
+    return pe_timer_create(interval_ms, repeat);
+}
+
+void pa_timer_cancel(int timer_id)
+{
+    pe_timer_cancel(timer_id);
+}
+
+int pa_tick_timers(int elapsed_ms)
+{
+    pe_timer_tick(elapsed_ms);
+    PE_Event ev;
+    if (pe_queue_pop(&ev) && ev.type == PE_EVENT_TIMER)
+        return ev.data.timer.timer_id;
+    return 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -210,24 +393,40 @@ static int process_pt_event(PT_Event *ev)
 {
     switch (ev->type) {
         case PT_EVENT_KEY: {
-            /* Chars imprimibles y control (Enter, Escape, etc.) usan ch[0] → ASCII.
-             * Teclas especiales (flechas, F1-F12, etc.) usan VK traducido a PE_KEY_*. */
             int key  = (ev->data.key.ch_len == 1)
                        ? (unsigned char)ev->data.key.ch[0]
                        : vk_to_pe(ev->data.key.keycode);
             int mods = ev->data.key.mods;
 
-            /* Ctrl+Q: salida de emergencia — siempre activo, sin importar bindings */
+            /* Ctrl+Q: salida de emergencia — siempre activo */
             if ((mods & PT_MOD_CTRL) && (key == 'q' || key == 'Q' || key == 0x11)) {
                 g_quit_flag = 1;
                 return -1;
             }
 
-            int focused = pe_focus_get();
+            /* Tab / Shift+Tab: mover foco */
+            if (key == '\t') {
+                if (mods & PT_MOD_SHIFT) pa_focus_prev();
+                else                     pa_focus_next();
+                pa_render();
+                return 0;
+            }
+
+            int focused = pa_focus_get_wid();
             if (focused < 0) focused = 0;
             int bid = pe_dispatch_key(focused, key, mods);
-            return bid;  /* 0 si nadie capturó */
+            return bid;
         }
+
+        case PT_EVENT_MOUSE: {
+            update_hover(ev->data.mouse.x, ev->data.mouse.y);
+            if (ev->data.mouse.button == PT_MOUSE_LEFT) {
+                int bid = dispatch_click(ev->data.mouse.x, ev->data.mouse.y);
+                if (bid > 0) return bid;
+            }
+            return 0;
+        }
+
         case PT_EVENT_RESIZE: {
             g_cols = ev->data.resize.cols;
             g_rows = ev->data.resize.rows;
@@ -235,6 +434,7 @@ static int process_pt_event(PT_Event *ev)
             pa_render();
             return 0;
         }
+
         default:
             return 0;
     }

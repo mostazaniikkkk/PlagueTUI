@@ -28,8 +28,16 @@ int pt_io_init(void) {
 
     /* Modo raw: sin echo, sin buffer de línea, con ratón y resize.
      * SIN ENABLE_VIRTUAL_TERMINAL_INPUT: así las flechas llegan como
-     * Win32 VK codes (VK_UP etc.) en vez de secuencias VT (\x1b[A). */
-    DWORD in_mode = ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT;
+     * Win32 VK codes (VK_UP etc.) en vez de secuencias VT (\x1b[A).
+     *
+     * ENABLE_EXTENDED_FLAGS es obligatorio para que el cambio en
+     * QUICK_EDIT_MODE tenga efecto.  Sin él, SetConsoleMode preserva el
+     * estado original de QUICK_EDIT_MODE (generalmente activo), y el
+     * sistema intercepta los clics del ratón para selección de texto en
+     * lugar de enviárselos a la aplicación. */
+    DWORD in_mode = ENABLE_MOUSE_INPUT
+                  | ENABLE_WINDOW_INPUT
+                  | ENABLE_EXTENDED_FLAGS;   /* deshabilita QUICK_EDIT_MODE */
     SetConsoleMode(g_hin, in_mode);
 
     return 0;

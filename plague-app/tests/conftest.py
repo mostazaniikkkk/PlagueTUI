@@ -71,6 +71,11 @@ class PL_SizeValue(ctypes.Structure):
 
 PA_NO_PARENT = -1
 
+PA_STATE_HOVER    = 0x01
+PA_STATE_FOCUSED  = 0x02
+PA_STATE_PRESSED  = 0x04
+PA_STATE_DISABLED = 0x08
+
 # ---------------------------------------------------------------------------
 # Firmas de funciones
 # ---------------------------------------------------------------------------
@@ -109,17 +114,47 @@ lib.pa_widget_set_dock.restype     = None
 lib.pa_widget_set_layout.argtypes  = [ctypes.c_int, ctypes.c_int]
 lib.pa_widget_set_layout.restype   = None
 
-lib.pa_widget_set_padding.argtypes = [ctypes.c_int, TG_Spacing]
-lib.pa_widget_set_padding.restype  = None
+lib.pa_widget_set_padding.argtypes    = [ctypes.c_int, TG_Spacing]
+lib.pa_widget_set_padding.restype     = None
 
-lib.pa_widget_region.argtypes      = [ctypes.c_int]
-lib.pa_widget_region.restype       = TG_Region
+lib.pa_widget_set_focusable.argtypes  = [ctypes.c_int, ctypes.c_int]
+lib.pa_widget_set_focusable.restype   = None
+
+lib.pa_widget_set_disabled.argtypes   = [ctypes.c_int, ctypes.c_int]
+lib.pa_widget_set_disabled.restype    = None
+
+lib.pa_widget_set_overlay.argtypes    = [ctypes.c_int, ctypes.c_int]
+lib.pa_widget_set_overlay.restype     = None
+
+lib.pa_widget_set_visible.argtypes    = [ctypes.c_int, ctypes.c_int]
+lib.pa_widget_set_visible.restype     = None
+
+lib.pa_widget_scroll_to.argtypes      = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+lib.pa_widget_scroll_to.restype       = None
+
+lib.pa_widget_region.argtypes         = [ctypes.c_int]
+lib.pa_widget_region.restype          = TG_Region
 
 lib.pa_render.argtypes = []
 lib.pa_render.restype  = None
 
-lib.pa_bind_key.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
-lib.pa_bind_key.restype  = ctypes.c_int
+lib.pa_focus_set.argtypes = [ctypes.c_int]
+lib.pa_focus_set.restype  = None
+
+lib.pa_focus_get.argtypes = []
+lib.pa_focus_get.restype  = ctypes.c_int
+
+lib.pa_focus_next.argtypes = []
+lib.pa_focus_next.restype  = None
+
+lib.pa_focus_prev.argtypes = []
+lib.pa_focus_prev.restype  = None
+
+lib.pa_bind_key.argtypes   = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+lib.pa_bind_key.restype    = ctypes.c_int
+
+lib.pa_bind_click.argtypes = [ctypes.c_int]
+lib.pa_bind_click.restype  = ctypes.c_int
 
 lib.pa_poll.argtypes      = []
 lib.pa_poll.restype       = ctypes.c_int
@@ -129,6 +164,15 @@ lib.pa_wait_poll.restype  = ctypes.c_int
 
 lib.pa_quit.argtypes = []
 lib.pa_quit.restype  = None
+
+lib.pa_timer_create.argtypes = [ctypes.c_int, ctypes.c_int]
+lib.pa_timer_create.restype  = ctypes.c_int
+
+lib.pa_timer_cancel.argtypes = [ctypes.c_int]
+lib.pa_timer_cancel.restype  = None
+
+lib.pa_tick_timers.argtypes  = [ctypes.c_int]
+lib.pa_tick_timers.restype   = ctypes.c_int
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -12,6 +12,7 @@ gcc -shared -o bin\plague_app.dll ^
     src\app.c ^
     src\widgets.c ^
     src\render.c ^
+    src\focus.c ^
     -I include ^
     -I src ^
     -I %DEPS% ^

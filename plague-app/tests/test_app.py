@@ -2,6 +2,7 @@ import unittest
 from conftest import (
     lib,
     PA_NO_PARENT,
+    PA_STATE_HOVER, PA_STATE_FOCUSED, PA_STATE_PRESSED, PA_STATE_DISABLED,
     PL_LAYOUT_DOCK, PL_LAYOUT_VERTICAL, PL_LAYOUT_HORIZONTAL,
     PL_DOCK_TOP, PL_DOCK_BOTTOM, PL_DOCK_LEFT, PL_DOCK_RIGHT, PL_DOCK_CENTER,
     fixed, fr, no_spacing, spacing,
@@ -202,6 +203,192 @@ class TestBindings(unittest.TestCase):
         lib.pa_quit()
         result = lib.pa_poll()
         self.assertEqual(result, -1)
+
+
+class TestFocus(unittest.TestCase):
+
+    def setUp(self):
+        lib.pa_init_headless(80, 24)
+
+    def tearDown(self):
+        lib.pa_shutdown()
+
+    def test_focus_get_initial_is_minus_one(self):
+        self.assertEqual(lib.pa_focus_get(), -1)
+
+    def test_focus_set_and_get(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_focusable(root, 1)
+        lib.pa_focus_set(root)
+        self.assertEqual(lib.pa_focus_get(), root)
+
+    def test_focus_next_cycles_focusable_widgets(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        w1   = lib.pa_widget_add(b"A", b"", b"", root)
+        w2   = lib.pa_widget_add(b"B", b"", b"", root)
+        lib.pa_widget_set_focusable(w1, 1)
+        lib.pa_widget_set_focusable(w2, 1)
+        lib.pa_focus_next()
+        self.assertEqual(lib.pa_focus_get(), w1)
+        lib.pa_focus_next()
+        self.assertEqual(lib.pa_focus_get(), w2)
+        lib.pa_focus_next()
+        self.assertEqual(lib.pa_focus_get(), w1)   # wrap-around
+
+    def test_focus_prev_cycles_backwards(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        w1   = lib.pa_widget_add(b"A", b"", b"", root)
+        w2   = lib.pa_widget_add(b"B", b"", b"", root)
+        lib.pa_widget_set_focusable(w1, 1)
+        lib.pa_widget_set_focusable(w2, 1)
+        lib.pa_focus_prev()
+        self.assertEqual(lib.pa_focus_get(), w2)   # desde -1, prev → último
+
+    def test_disabled_widget_skipped_by_focus(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        w1   = lib.pa_widget_add(b"A", b"", b"", root)
+        w2   = lib.pa_widget_add(b"B", b"", b"", root)
+        lib.pa_widget_set_focusable(w1, 1)
+        lib.pa_widget_set_focusable(w2, 1)
+        lib.pa_widget_set_disabled(w1, 1)
+        lib.pa_focus_next()
+        self.assertEqual(lib.pa_focus_get(), w2)   # w1 deshabilitado, salta
+
+    def test_no_focusable_widgets_focus_stays_minus_one(self):
+        lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        lib.pa_focus_next()
+        self.assertEqual(lib.pa_focus_get(), -1)
+
+
+class TestClickBinding(unittest.TestCase):
+
+    def setUp(self):
+        lib.pa_init_headless(80, 24)
+
+    def tearDown(self):
+        lib.pa_shutdown()
+
+    def test_bind_click_returns_nonzero(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        bid  = lib.pa_bind_click(root)
+        self.assertGreater(bid, 0)
+
+    def test_bind_click_ids_are_unique(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        w1   = lib.pa_widget_add(b"A", b"", b"", root)
+        w2   = lib.pa_widget_add(b"B", b"", b"", root)
+        b1   = lib.pa_bind_click(w1)
+        b2   = lib.pa_bind_click(w2)
+        self.assertNotEqual(b1, b2)
+
+    def test_bind_click_range_different_from_key_bindings(self):
+        root  = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        kbid  = lib.pa_bind_key(root, ord('q'), 0)
+        cbid  = lib.pa_bind_click(root)
+        self.assertNotEqual(kbid, cbid)
+
+
+class TestWidgetProperties(unittest.TestCase):
+
+    def setUp(self):
+        lib.pa_init_headless(80, 24)
+
+    def tearDown(self):
+        lib.pa_shutdown()
+
+    def test_set_focusable_does_not_crash(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_focusable(root, 1)
+        lib.pa_widget_set_focusable(root, 0)
+
+    def test_set_disabled_does_not_crash(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_disabled(root, 1)
+        lib.pa_widget_set_disabled(root, 0)
+
+    def test_set_overlay_does_not_crash(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_overlay(root, 1)
+
+    def test_scroll_to_does_not_crash(self):
+        root = lib.pa_widget_add(b"Screen", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_scroll_to(root, 5, 10)
+
+    def test_render_with_overlay_does_not_crash(self):
+        root    = lib.pa_widget_add(b"Screen",  b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_layout(root, PL_LAYOUT_DOCK)
+        main    = lib.pa_widget_add(b"Main",    b"", b"", root)
+        lib.pa_widget_set_dock(main, PL_DOCK_CENTER)
+        toast   = lib.pa_widget_add(b"Toast",   b"", b"", root)
+        lib.pa_widget_set_overlay(toast, 1)
+        lib.pa_widget_set_size(toast, fixed(20), fixed(3))
+        lib.pa_render()
+
+
+class TestTimers(unittest.TestCase):
+
+    def setUp(self):
+        lib.pa_init_headless(80, 24)
+
+    def tearDown(self):
+        lib.pa_shutdown()
+
+    def test_timer_create_returns_nonzero(self):
+        tid = lib.pa_timer_create(100, 0)
+        self.assertGreater(tid, 0)
+
+    def test_timer_ids_are_unique(self):
+        t1 = lib.pa_timer_create(100, 0)
+        t2 = lib.pa_timer_create(200, 0)
+        self.assertNotEqual(t1, t2)
+
+    def test_one_shot_timer_fires_once(self):
+        tid = lib.pa_timer_create(100, 0)   # one-shot, 100 ms
+        result = lib.pa_tick_timers(50)
+        self.assertEqual(result, 0)          # no ha expirado
+        result = lib.pa_tick_timers(60)      # total 110 ms → expira
+        self.assertEqual(result, tid)
+
+    def test_repeat_timer_fires_multiple_times(self):
+        tid = lib.pa_timer_create(50, 1)    # periódico, 50 ms
+        lib.pa_tick_timers(60)              # primera vez
+        fired = lib.pa_tick_timers(60)     # segunda vez
+        self.assertEqual(fired, tid)
+
+    def test_cancel_timer_stops_firing(self):
+        tid = lib.pa_timer_create(50, 1)
+        lib.pa_timer_cancel(tid)
+        result = lib.pa_tick_timers(100)
+        self.assertEqual(result, 0)         # cancelado, no dispara
+
+
+class TestVisibility(unittest.TestCase):
+
+    def setUp(self):
+        lib.pa_init_headless(80, 24)
+
+    def tearDown(self):
+        lib.pa_shutdown()
+
+    def test_widget_visible_by_default(self):
+        wid = lib.pa_widget_add(b"box", b"", b"", PA_NO_PARENT)
+        # Default visible=1 — render must not crash
+        lib.pa_render()
+
+    def test_set_invisible(self):
+        wid = lib.pa_widget_add(b"box", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_visible(wid, 0)
+        lib.pa_render()
+
+    def test_set_visible_again(self):
+        wid = lib.pa_widget_add(b"box", b"", b"", PA_NO_PARENT)
+        lib.pa_widget_set_visible(wid, 0)
+        lib.pa_widget_set_visible(wid, 1)
+        lib.pa_render()
+
+    def test_invalid_wid_safe(self):
+        lib.pa_widget_set_visible(-1,  0)
+        lib.pa_widget_set_visible(999, 0)
 
 
 if __name__ == "__main__":
