@@ -116,12 +116,29 @@ static int utf8_len(unsigned char byte) {
     return 4;
 }
 
+static uint8_t hex_nibble(char c) {
+    if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+    if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+    if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+    return 0;
+}
+
 void pt_draw_draw_text(TG_Offset pos, const char* text, PG_TextStyle style) {
     if (!text) return;
     int col = pos.x;
     const unsigned char* p = (const unsigned char*)text;
+
+    /* Estado activo — cambiable inline con escapes:
+       \x01RRGGBB  set fg color
+       \x02        reset color + bold + italic
+       \x03        bold on
+       \x04        italic on  */
+    PG_Color cur_color  = style.color;
+    int      cur_bold   = style.bold;
+    int      cur_italic = style.italic;
+
     while (*p) {
-        /* Salto de línea: bajar una fila y volver al x original */
+        /* Salto de línea */
         if (*p == '\n') {
             pos.y++;
             col = pos.x;
@@ -129,23 +146,53 @@ void pt_draw_draw_text(TG_Offset pos, const char* text, PG_TextStyle style) {
             continue;
         }
 
+        /* \x01RRGGBB — cambio de color inline */
+        if (*p == 0x01) {
+            if (p[1] && p[2] && p[3] && p[4] && p[5] && p[6]) {
+                uint8_t r = (uint8_t)((hex_nibble((char)p[1]) << 4) | hex_nibble((char)p[2]));
+                uint8_t g = (uint8_t)((hex_nibble((char)p[3]) << 4) | hex_nibble((char)p[4]));
+                uint8_t b = (uint8_t)((hex_nibble((char)p[5]) << 4) | hex_nibble((char)p[6]));
+                cur_color.r = r / 255.0f;
+                cur_color.g = g / 255.0f;
+                cur_color.b = b / 255.0f;
+                p += 7;
+            } else {
+                p++;
+            }
+            continue;
+        }
+
+        /* \x02 — reset color + bold + italic */
+        if (*p == 0x02) {
+            cur_color  = style.color;
+            cur_bold   = style.bold;
+            cur_italic = style.italic;
+            p++;
+            continue;
+        }
+
+        /* \x03 — bold on */
+        if (*p == 0x03) { cur_bold = 1; p++; continue; }
+
+        /* \x04 — italic on */
+        if (*p == 0x04) { cur_italic = 1; p++; continue; }
+
         int len = utf8_len(*p);
         int ok  = 1;
         for (int i = 1; i < len; i++)
             if (!p[i]) { ok = 0; break; }
         if (!ok) break;
 
-        /* Heredar el background del fill_rect subyacente en lugar de poner negro */
         TG_Offset t = cur_translate();
         PT_Cell cell = pt_cb_get(col + t.x, pos.y + t.y);
         for (int i = 0; i < 4; i++) cell.ch[i] = 0;
         for (int i = 0; i < len; i++) cell.ch[i] = (char)p[i];
         cell.ch_len  = (uint8_t)len;
-        cell.r_fg    = to_u8(style.color.r);
-        cell.g_fg    = to_u8(style.color.g);
-        cell.b_fg    = to_u8(style.color.b);
-        cell.bold    = (uint8_t)style.bold;
-        cell.italic  = (uint8_t)style.italic;
+        cell.r_fg    = to_u8(cur_color.r);
+        cell.g_fg    = to_u8(cur_color.g);
+        cell.b_fg    = to_u8(cur_color.b);
+        cell.bold    = (uint8_t)cur_bold;
+        cell.italic  = (uint8_t)cur_italic;
 
         set_cell(col, pos.y, cell);
         col++;

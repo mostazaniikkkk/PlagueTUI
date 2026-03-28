@@ -62,8 +62,11 @@ void pt_cb_flush(void) {
             if (memcmp(back, front, sizeof(PT_Cell)) == 0) continue;
 
             pt_ansi_move(c, r);
+            pt_ansi_reset();    /* clear previous bold/italic/color state */
             pt_ansi_bg_rgb(back->r_bg, back->g_bg, back->b_bg);
             pt_ansi_fg_rgb(back->r_fg, back->g_fg, back->b_fg);
+            if (back->bold)   pt_ansi_bold();
+            if (back->italic) pt_ansi_italic();
             pt_ansi_write(back->ch, back->ch_len ? back->ch_len : 1);
             *front = *back;
         }

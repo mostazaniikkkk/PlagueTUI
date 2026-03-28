@@ -141,7 +141,7 @@ PE_API int  pe_tree_parent    (int node_id);
 // Bindings de teclado
 // ---------------------------------------------------------------------------
 
-#define PE_MAX_BINDINGS 128
+#define PE_MAX_BINDINGS 512
 
 /* Registra una combinación de tecla+modificadores en un nodo.
  * Devuelve binding_id (>=1) o 0 en error. */

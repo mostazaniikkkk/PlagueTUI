@@ -24,13 +24,19 @@ static int g_headless   = 0;
  * Click bindings
  * --------------------------------------------------------------------------- */
 
-#define PA_MAX_CLICK_BINDS 64
-#define PA_CLICK_BID_BASE  0x8000   /* rango separado de key bindings */
+#define PA_MAX_CLICK_BINDS  64
+#define PA_MAX_SCROLL_BINDS 32
+#define PA_CLICK_BID_BASE   0x8000   /* rango separado de key bindings */
 
 typedef struct { int wid; int bid; } ClickBind;
 static ClickBind g_click_binds[PA_MAX_CLICK_BINDS];
-static int       g_click_count = 0;
+static int       g_click_count    = 0;
 static int       g_next_click_bid = PA_CLICK_BID_BASE;
+
+typedef struct { int wid; int bid; } ScrollBind;
+static ScrollBind g_scroll_binds[PA_MAX_SCROLL_BINDS];
+static int        g_scroll_count    = 0;
+static int        g_last_scroll_dy  = 0;
 
 static int g_last_mouse_x = 0;
 static int g_last_mouse_y = 0;
@@ -112,6 +118,24 @@ static int dispatch_click(int mx, int my)
  * Ciclo de vida
  * --------------------------------------------------------------------------- */
 
+static int dispatch_scroll(int mx, int my, int dy)
+{
+    for (int i = g_widget_count - 1; i >= 0; i--) {
+        if (!g_widgets[i].used || !g_widgets[i].visible) continue;
+        TG_Region r = pa_last_region(i);
+        if (mx < r.x || mx >= r.x + r.width)  continue;
+        if (my < r.y || my >= r.y + r.height) continue;
+        for (int j = 0; j < g_scroll_count; j++) {
+            if (g_scroll_binds[j].wid == i) {
+                g_last_scroll_dy = dy;
+                return g_scroll_binds[j].bid;
+            }
+        }
+        return 0;
+    }
+    return 0;
+}
+
 static void common_init(void)
 {
     pa_widgets_init();
@@ -121,6 +145,8 @@ static void common_init(void)
     g_quit_flag      = 0;
     g_click_count    = 0;
     g_next_click_bid = PA_CLICK_BID_BASE;
+    g_scroll_count   = 0;
+    g_last_scroll_dy = 0;
 }
 
 int pa_init(void)
@@ -330,6 +356,19 @@ int pa_bind_click(int wid)
     return bid;
 }
 
+int pa_bind_scroll(int wid)
+{
+    if (wid < 0 || wid >= g_widget_count) return 0;
+    if (g_scroll_count >= PA_MAX_SCROLL_BINDS) return 0;
+    int bid = g_next_click_bid++;
+    g_scroll_binds[g_scroll_count].wid = wid;
+    g_scroll_binds[g_scroll_count].bid = bid;
+    g_scroll_count++;
+    return bid;
+}
+
+int pa_scroll_dy(void) { return g_last_scroll_dy; }
+
 /* ---------------------------------------------------------------------------
  * Timers
  * --------------------------------------------------------------------------- */
@@ -398,8 +437,10 @@ static int process_pt_event(PT_Event *ev)
                        : vk_to_pe(ev->data.key.keycode);
             int mods = ev->data.key.mods;
 
-            /* Ctrl+Q: salida de emergencia — siempre activo */
-            if ((mods & PT_MOD_CTRL) && (key == 'q' || key == 'Q' || key == 0x11)) {
+            /* Ctrl+Q: salida de emergencia — siempre activo.
+             * Usamos keycode ('Q'=0x51) para no confundir VK_CONTROL (0x11)
+             * con el caracter de control 0x11 que genera Ctrl+Q. */
+            if ((mods & PT_MOD_CTRL) && ev->data.key.keycode == 'Q') {
                 g_quit_flag = 1;
                 return -1;
             }
@@ -419,9 +460,16 @@ static int process_pt_event(PT_Event *ev)
         }
 
         case PT_EVENT_MOUSE: {
-            update_hover(ev->data.mouse.x, ev->data.mouse.y);
+            int mx = ev->data.mouse.x, my = ev->data.mouse.y;
+            update_hover(mx, my);
             if (ev->data.mouse.button == PT_MOUSE_LEFT) {
-                int bid = dispatch_click(ev->data.mouse.x, ev->data.mouse.y);
+                int bid = dispatch_click(mx, my);
+                if (bid > 0) return bid;
+            } else if (ev->data.mouse.button == PT_MOUSE_SCROLL_UP) {
+                int bid = dispatch_scroll(mx, my, -1);
+                if (bid > 0) return bid;
+            } else if (ev->data.mouse.button == PT_MOUSE_SCROLL_DOWN) {
+                int bid = dispatch_scroll(mx, my, +1);
                 if (bid > 0) return bid;
             }
             return 0;

@@ -121,6 +121,14 @@ PA_API int pa_bind_key(int wid, int key, int mods);
 PA_API int pa_bind_click(int wid);
 
 /*
+ * Registra un evento de scroll de mouse en un widget.
+ * Devuelve binding_id cuando la rueda gira sobre la región del widget.
+ * Usa pa_scroll_dy() para obtener la dirección (-1=arriba, +1=abajo).
+ */
+PA_API int pa_bind_scroll(int wid);
+PA_API int pa_scroll_dy(void);
+
+/*
  * Devuelve las coordenadas del último evento de ratón recibido.
  * Útil para determinar qué fila de una lista fue clickeada:
  *   int mx, my; pa_mouse_pos(&mx, &my);

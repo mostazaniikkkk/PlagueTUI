@@ -132,6 +132,16 @@ _sig(pw.pw_loading_create, C,    C)
 _sig(pw.pw_loading_tick,   None, C, C)
 _sig(pw.pw_loading_start,  None, C)
 
+# Phase 7 — Input
+_sig(pw.pw_input_create,        C,    CP, C, C)
+_sig(pw.pw_input_register_keys, None, C)
+_sig(pw.pw_input_handle,        C,    C, C)
+_sig(pw.pw_input_get_value,     CP,   C)
+_sig(pw.pw_input_set_value,     None, C, CP)
+_sig(pw.pw_input_is_submitted,  C,    C)
+_sig(pw.pw_input_set_password,  None, C, C)
+_sig(pw.pw_input_tick,          None, C, C)
+
 # System
 _sig(pw.pw_header_create,    C,    CP, CP, C)
 _sig(pw.pw_header_set_clock, None, C,  C)
@@ -182,6 +192,52 @@ _sig(pw.pw_selectionlist_set_cursor,       None, C, C)
 _sig(pw.pw_selectionlist_get_cursor,       C,    C)
 _sig(pw.pw_selectionlist_toggle_selection, None, C, C)
 
+# Phase 8 — Navigation
+_sig(pw.pw_collapsible_create,       C,    CP, C)
+_sig(pw.pw_collapsible_header_wid,   C,    C)
+_sig(pw.pw_collapsible_content,      C,    C)
+_sig(pw.pw_collapsible_toggle,       None, C)
+_sig(pw.pw_collapsible_is_collapsed, C,    C)
+
+_sig(pw.pw_tabs_create,           C,    C)
+_sig(pw.pw_tabs_add,              C,    C, CP)
+_sig(pw.pw_tabs_register_clicks,  None, C)
+_sig(pw.pw_tabs_handle_click,     C,    C, C)
+_sig(pw.pw_tabs_set_active,       None, C, C)
+_sig(pw.pw_tabs_get_active,       C,    C)
+_sig(pw.pw_tabs_next,             None, C)
+_sig(pw.pw_tabs_prev,             None, C)
+
+_sig(pw.pw_tabbedcontent_create,          C,    C)
+_sig(pw.pw_tabbedcontent_add_pane,        C,    C, CP)
+_sig(pw.pw_tabbedcontent_register_clicks, None, C)
+_sig(pw.pw_tabbedcontent_handle_click,    C,    C, C)
+_sig(pw.pw_tabbedcontent_set_active,      None, C, C)
+_sig(pw.pw_tabbedcontent_get_active,      C,    C)
+
+_sig(pw.pw_tree_create,          C,    C)
+_sig(pw.pw_tree_add_node,        C,    C, C, CP, C)
+_sig(pw.pw_tree_expand,          None, C, C)
+_sig(pw.pw_tree_collapse,        None, C, C)
+_sig(pw.pw_tree_toggle,          None, C)
+_sig(pw.pw_tree_cursor_next,     None, C)
+_sig(pw.pw_tree_cursor_prev,     None, C)
+_sig(pw.pw_tree_get_cursor_node, C,    C)
+_sig(pw.pw_tree_click_row,       C,    C, C)
+
+_sig(pw.pw_log_create,           C,    C)
+_sig(pw.pw_richlog_create,       C,    C)
+_sig(pw.pw_log_write,            None, C, CP)
+_sig(pw.pw_log_clear,            None, C)
+_sig(pw.pw_log_line_count,       C,    C)
+
+_sig(pw.pw_textarea_create,        C,    C)
+_sig(pw.pw_textarea_register_keys, None, C)
+_sig(pw.pw_textarea_handle,        C,    C, C)
+_sig(pw.pw_textarea_get_text,      CP,   C)
+_sig(pw.pw_textarea_set_text,      None, C, CP)
+_sig(pw.pw_textarea_tick,          None, C, C)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -218,11 +274,12 @@ pw.pw_header_set_clock(header, 1)
 
 # Footer (auto-docks BOTTOM)
 footer = pw.pw_footer_create(screen)
-pw.pw_footer_add_key(footer, b"q",     b"Quit")
+pw.pw_footer_add_key(footer, b"Ctrl+Q", b"Quit")
 pw.pw_footer_add_key(footer, b"Tab",   b"Focus")
 pw.pw_footer_add_key(footer, b"j/k",   b"Navigate")
 pw.pw_footer_add_key(footer, b"Space", b"Toggle")
 pw.pw_footer_add_key(footer, b"p",     b"+Progress")
+pw.pw_footer_add_key(footer, b"l",     b"+Log")
 pw.pw_footer_add_key(footer, b"1-3",   b"Radio")
 
 # Main content (CENTER dock, split horizontally)
@@ -276,9 +333,16 @@ app.pa_widget_set_size(loading_w, fixed(2), fixed(1))
 pw.pw_loading_start(loading_w)
 pw.pw_static_create(b"  running...", loading_row)
 
-# Placeholder
-ph = pw.pw_placeholder_create(b"Placeholder", left)
-app.pa_widget_set_size(ph, fr(), fixed(2))
+# Input fields
+pw.pw_rule_create(None, left)
+pw.pw_label_create(b"Input [Tab to focus, type, Enter]:", b"secondary", left)
+input_name = pw.pw_input_create(b"Your name...", 0, left)
+pw.pw_input_register_keys(input_name)
+pw.pw_label_create(b"Password:", b"secondary", left)
+input_pass = pw.pw_input_create(b"Secret...", 0, left)
+pw.pw_input_register_keys(input_pass)
+pw.pw_input_set_password(input_pass, 1)
+input_status = pw.pw_label_create(b"", b"secondary", left)
 
 # ListView
 pw.pw_rule_create("\u2501".encode(), left)  # ━ heavy rule
@@ -350,14 +414,79 @@ pw.pw_selectionlist_add_option(sl, b"Git integration",     1)
 pw.pw_selectionlist_add_option(sl, b"Spell check",         0)
 pw.pw_selectionlist_add_option(sl, b"Dark theme",          1)
 
+# ── Phase 8 — right panel ──────────────────────────────────────────────────
+
+# Collapsible
+pw.pw_rule_create(None, right)
+pw.pw_label_create(b"Collapsible [click header]:", b"secondary", right)
+coll_w = pw.pw_collapsible_create(b"Advanced settings", right)
+coll_body = pw.pw_collapsible_content(coll_w)
+pw.pw_static_create(b"  Option A: enabled", coll_body)
+pw.pw_static_create(b"  Option B: disabled", coll_body)
+pw.pw_static_create(b"  Option C: auto", coll_body)
+coll_hdr = pw.pw_collapsible_header_wid(coll_w)
+
+# TabbedContent
+pw.pw_rule_create(None, right)
+pw.pw_label_create(b"TabbedContent [click tabs]:", b"secondary", right)
+tc_w = pw.pw_tabbedcontent_create(right)
+app.pa_widget_set_size(tc_w, fr(), fixed(5))
+pane_a = pw.pw_tabbedcontent_add_pane(tc_w, b"Stats")
+pane_b = pw.pw_tabbedcontent_add_pane(tc_w, b"Config")
+pane_c = pw.pw_tabbedcontent_add_pane(tc_w, b"Log")
+pw.pw_static_create(b"  CPU: 42%  RAM: 1.2GB", pane_a)
+pw.pw_static_create(b"  theme: dark  lang: es", pane_b)
+pw.pw_static_create(b"  [INFO] demo started", pane_c)
+pw.pw_tabbedcontent_register_clicks(tc_w)
+
+# Phase 9 — Log / RichLog / TextArea
+pw.pw_rule_create(None, right)
+pw.pw_label_create(b"Log [p = append line]:", b"secondary", right)
+log_w = pw.pw_log_create(right)
+app.pa_widget_set_size(log_w, fr(), fixed(4))
+pw.pw_log_write(log_w, b"[INFO] demo started")
+pw.pw_log_write(log_w, b"[INFO] widgets ready")
+
+pw.pw_label_create(b"RichLog [markup stripped]:", b"secondary", right)
+rlog_w = pw.pw_richlog_create(right)
+app.pa_widget_set_size(rlog_w, fr(), fixed(3))
+pw.pw_log_write(rlog_w, b"[green]OK[/green] connected")
+pw.pw_log_write(rlog_w, b"[red]ERR[/red] timeout")
+
+pw.pw_rule_create(None, right)
+pw.pw_label_create(b"TextArea [focus + type]:", b"secondary", right)
+ta_w = pw.pw_textarea_create(right)
+app.pa_widget_set_size(ta_w, fr(), fixed(4))
+pw.pw_textarea_register_keys(ta_w)
+pw.pw_textarea_set_text(ta_w, b"edit me\nline two")
+
+# Tree (left panel — add after ListView)
+pw.pw_rule_create(None, left)
+pw.pw_label_create(b"Tree [focus + j/k + Space]:", b"secondary", left)
+tree_w = pw.pw_tree_create(left)
+app.pa_widget_set_size(tree_w, fr(), fixed(7))
+BID_TREE_CLICK = app.pa_bind_click(tree_w)
+
+# Build tree: root (auto-expanded)
+n_src  = pw.pw_tree_add_node(tree_w, -1,    b"src",         0)
+n_app  = pw.pw_tree_add_node(tree_w, n_src,  b"app.c",       1)
+n_wid  = pw.pw_tree_add_node(tree_w, n_src,  b"widgets.c",   1)
+n_inc  = pw.pw_tree_add_node(tree_w, -1,    b"include",     0)
+n_hdr  = pw.pw_tree_add_node(tree_w, n_inc,  b"plague_app.h",1)
+n_wh   = pw.pw_tree_add_node(tree_w, n_inc,  b"plague_wid.h",1)
+n_test = pw.pw_tree_add_node(tree_w, -1,    b"tests",       0)
+n_t1   = pw.pw_tree_add_node(tree_w, n_test, b"test_app.py", 1)
+pw.pw_tree_expand(tree_w, n_src)
+pw.pw_tree_expand(tree_w, n_inc)
+
 # ---------------------------------------------------------------------------
 # Bindings
 # ---------------------------------------------------------------------------
-BID_QUIT   = app.pa_bind_key(screen, ord('q'), PT_MOD_NONE)
 BID_DOWN   = app.pa_bind_key(screen, ord('j'), PT_MOD_NONE)
 BID_UP     = app.pa_bind_key(screen, ord('k'), PT_MOD_NONE)
 BID_SPACE  = app.pa_bind_key(screen, ord(' '), PT_MOD_NONE)
 BID_PROG   = app.pa_bind_key(screen, ord('p'), PT_MOD_NONE)
+BID_LOG    = app.pa_bind_key(screen, ord('l'), PT_MOD_NONE)
 BID_R1     = app.pa_bind_key(screen, ord('1'), PT_MOD_NONE)
 BID_R2     = app.pa_bind_key(screen, ord('2'), PT_MOD_NONE)
 BID_R3     = app.pa_bind_key(screen, ord('3'), PT_MOD_NONE)
@@ -368,9 +497,12 @@ BID_OK       = app.pa_bind_click(btn_ok)
 BID_CANCEL   = app.pa_bind_click(btn_cancel)
 BID_INFO     = app.pa_bind_click(btn_info)
 BID_RS_OPTS  = [app.pa_bind_click(w) for w in rs_opts]
-BID_OL_CLICK = app.pa_bind_click(ol)
-BID_LV_CLICK = app.pa_bind_click(lv)
-BID_SL_CLICK = app.pa_bind_click(sl)
+BID_OL_CLICK   = app.pa_bind_click(ol)
+BID_LV_CLICK   = app.pa_bind_click(lv)
+BID_SL_CLICK   = app.pa_bind_click(sl)
+BID_COLL_HDR   = app.pa_bind_click(coll_hdr)  # header row
+BID_COLL_W     = app.pa_bind_click(coll_w)    # entire container (fallback)
+# tc_w tabs clicks already registered via pw_tabbedcontent_register_clicks
 
 # 100ms repeating animation timer
 TIMER_ANIM = app.pa_timer_create(100, 1)
@@ -397,6 +529,10 @@ try:
         if fired == TIMER_ANIM:
             pw.pw_loading_tick(loading_w, 100)
             pw.pw_header_tick(header)
+            pw.pw_input_tick(input_name, 100)
+            pw.pw_input_tick(input_pass, 100)
+            pw.pw_textarea_tick(ta_w, 100)
+
             elapsed_sec[0] += 1
             mm = (elapsed_sec[0] // 60) % 60
             ss = elapsed_sec[0] % 60
@@ -410,24 +546,22 @@ try:
         elif bid == 0:
             time.sleep(0.016)
             continue
-        elif bid == BID_QUIT:
-            app.pa_quit()
 
-        elif bid == BID_DOWN:
-            foc = app.pa_focus_get()
-            if   foc == ol: pw.pw_optionlist_cursor_next(ol)
-            elif foc == sl: pw.pw_selectionlist_cursor_next(sl)
-            elif foc == lv: pw.pw_listview_cursor_next(lv)
-            else:           app.pa_focus_next()
+        # Input widgets consume their own key bids first
+        elif pw.pw_input_handle(input_name, bid):
+            if pw.pw_input_is_submitted(input_name):
+                val = pw.pw_input_get_value(input_name).decode(errors="replace")
+                pw.pw_label_set_text(input_status, f"Submitted: {val}".encode())
             app.pa_render()
-
-        elif bid == BID_UP:
-            foc = app.pa_focus_get()
-            if   foc == ol: pw.pw_optionlist_cursor_prev(ol)
-            elif foc == sl: pw.pw_selectionlist_cursor_prev(sl)
-            elif foc == lv: pw.pw_listview_cursor_prev(lv)
-            else:           app.pa_focus_prev()
+            continue
+        elif pw.pw_input_handle(input_pass, bid):
+            if pw.pw_input_is_submitted(input_pass):
+                pw.pw_label_set_text(input_status, b"Password submitted!")
             app.pa_render()
+            continue
+        elif pw.pw_textarea_handle(ta_w, bid):
+            app.pa_render()
+            continue
 
         elif bid == BID_SPACE:
             foc = app.pa_focus_get()
@@ -437,12 +571,20 @@ try:
             elif foc == sl:
                 cur = pw.pw_selectionlist_get_cursor(sl)
                 pw.pw_selectionlist_toggle_selection(sl, cur)
+            elif foc == tree_w:
+                pw.pw_tree_toggle(tree_w)
             app.pa_render()
 
         elif bid == BID_PROG:
             progress_val[0] = min(100.0, progress_val[0] + 10.0)
             pw.pw_progressbar_set_progress(pb, ctypes.c_float(progress_val[0]))
             pw.pw_progressbar_update(pb)
+            app.pa_render()
+
+        elif bid == BID_LOG:
+            n = pw.pw_log_line_count(log_w)
+            pw.pw_log_write(log_w, f"[INFO] line {n + 1}".encode())
+            pw.pw_log_write(rlog_w, f"[cyan]line {n + 1}[/cyan] appended".encode())
             app.pa_render()
 
         elif bid == BID_R1:
@@ -494,6 +636,37 @@ try:
             sl_cur = pw.pw_selectionlist_get_cursor(sl)
             msg = f"focus={foc}  ol={ol_cur}  sl={sl_cur}".encode()
             pw.pw_label_set_text(status_lbl, msg)
+            app.pa_render()
+
+        # Phase 8 handlers
+        elif bid == BID_COLL_HDR or bid == BID_COLL_W:
+            pw.pw_collapsible_toggle(coll_w)
+            app.pa_render()
+
+        elif pw.pw_tabbedcontent_handle_click(tc_w, bid):
+            app.pa_render()
+
+        elif bid == BID_TREE_CLICK:
+            _, my = mouse_pos()
+            pw.pw_tree_click_row(tree_w, my)
+            app.pa_render()
+
+        elif bid == BID_DOWN:
+            foc = app.pa_focus_get()
+            if   foc == ol:     pw.pw_optionlist_cursor_next(ol)
+            elif foc == sl:     pw.pw_selectionlist_cursor_next(sl)
+            elif foc == lv:     pw.pw_listview_cursor_next(lv)
+            elif foc == tree_w: pw.pw_tree_cursor_next(tree_w)
+            else:               app.pa_focus_next()
+            app.pa_render()
+
+        elif bid == BID_UP:
+            foc = app.pa_focus_get()
+            if   foc == ol:     pw.pw_optionlist_cursor_prev(ol)
+            elif foc == sl:     pw.pw_selectionlist_cursor_prev(sl)
+            elif foc == lv:     pw.pw_listview_cursor_prev(lv)
+            elif foc == tree_w: pw.pw_tree_cursor_prev(tree_w)
+            else:               app.pa_focus_prev()
             app.pa_render()
 
 finally:

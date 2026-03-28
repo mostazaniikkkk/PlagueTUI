@@ -65,6 +65,14 @@ void pt_ansi_reset(void) {
     buf_write("\x1b[0m", 4);
 }
 
+void pt_ansi_bold(void) {
+    buf_write("\x1b[1m", 4);
+}
+
+void pt_ansi_italic(void) {
+    buf_write("\x1b[3m", 4);
+}
+
 void pt_ansi_alt_screen_on(void) {
     buf_write("\x1b[?1049h", 8);
     pt_ansi_commit();

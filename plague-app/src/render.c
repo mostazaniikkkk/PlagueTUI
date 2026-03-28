@@ -109,7 +109,13 @@ static void draw_widget(int i, int css_handle)
         if (text_y < cr.y) text_y = cr.y;
 
         TG_Offset pos = { text_x, text_y };
-        pt_draw_text(pos, w->text, ts);
+        if (has_nl) {
+            pt_clip_push(cr);
+            pt_draw_text(pos, w->text, ts);
+            pt_clip_pop();
+        } else {
+            pt_draw_text(pos, w->text, ts);
+        }
     }
 }
 
