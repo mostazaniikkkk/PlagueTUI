@@ -153,51 +153,486 @@ void pw_shutdown(void);
 const char *pw_default_tcss(void);   // TCSS por defecto para todos los widgets
 ```
 
-### Widgets de display
+Pasa `pw_default_tcss()` a `pa_css_load()` si no tienes tu propia hoja de estilos.
 
-| Widget | Función de creación | Descripción |
-|--------|---------------------|-------------|
-| Static | `pw_static_create(text, parent)` | Texto plano, sin interacción |
-| Label | `pw_label_create(text, variant, parent)` | Texto con variante de color |
-| Rule | `pw_rule_create(line_char, parent)` | Separador horizontal |
-| Placeholder | `pw_placeholder_create(label, parent)` | Cuadro de color para debug |
-| ProgressBar | `pw_progressbar_create(total, parent)` | Barra de progreso `░▓█` |
-| Sparkline | `pw_sparkline_create(parent)` | Mini gráfico de barras `▁▂▃▄▅▆▇█` |
-| Digits | `pw_digits_create(text, parent)` | Números grandes en box-drawing (3 filas) |
-| LoadingIndicator | `pw_loading_create(parent)` | Spinner de braille animado |
+---
 
-### Widgets de sistema
+### Display — texto y datos
 
-| Widget | Función de creación | Descripción |
-|--------|---------------------|-------------|
-| Header | `pw_header_create(title, icon, parent)` | Barra superior con título y reloj |
-| Footer | `pw_footer_create(parent)` | Barra inferior con atajos de teclado |
+#### Static / Label
 
-### Widgets interactivos
+Texto sin interacción. `Label` añade una clase CSS de variante.
 
-| Widget | Función de creación | Descripción |
-|--------|---------------------|-------------|
-| ToggleButton | `pw_toggle_create(label, checked, parent)` | `○ label` / `● label` |
-| Checkbox | `pw_checkbox_create(label, checked, parent)` | `[ ] label` / `[X] label` |
-| Switch | `pw_switch_create(active, parent)` | `○╺━━` / `━━╸●` — ancho fijo 4 celdas |
-| Button | `pw_button_create(label, variant, parent)` | Botón clickeable con variantes de color |
-| RadioButton | `pw_radio_create(label, checked, parent)` | `◯ label` / `◉ label` |
-| RadioSet | `pw_radioset_create(parent)` | Contenedor de RadioButtons (exclusión mutua) |
+```c
+int  pw_static_create(const char *text, int parent_wid);
+int  pw_label_create (const char *text, const char *variant, int parent_wid);
+// variant: NULL | "primary" | "secondary" | "success" | "warning" | "error"
+void pw_label_set_text(int wid, const char *text);
+```
 
-### Listas
+#### Rule
 
-| Widget | Función de creación | Descripción |
-|--------|---------------------|-------------|
-| OptionList | `pw_optionlist_create(parent)` | Lista con cursor `▸`, un ítem activo |
-| ListView | `pw_listview_create(parent)` | Lista con cursor `▶` |
-| SelectionList | `pw_selectionlist_create(parent)` | Lista multi-selección `[ ]` / `[X]` |
+Separador horizontal relleno de un carácter unicode.
+
+```c
+int  pw_rule_create  (const char *line_char, int parent_wid);
+// line_char: "─" | "━" | "═" | NULL → "─"
+void pw_rule_set_char(int wid, const char *line_char);
+```
+
+#### Placeholder
+
+Rectángulo de color con etiqueta centrada. Útil para maquetar.
+
+```c
+int  pw_placeholder_create    (const char *label, int parent_wid);
+// label: NULL → muestra el wid numérico
+void pw_placeholder_set_variant(int wid, int variant_index);
+// variant_index 0-6 cicla colores predefinidos
+```
+
+#### ProgressBar
+
+Barra de progreso con caracteres unicode `░▓█`. Tamaño `fr(1) × fixed(1)`.
+
+```c
+int   pw_progressbar_create     (float total, int parent_wid);
+void  pw_progressbar_set_progress(int wid, float progress);
+// Llamar DESPUÉS de pa_render() para recalcular el ancho:
+void  pw_progressbar_update     (int wid);
+float pw_progressbar_get_progress(int wid);
+float pw_progressbar_get_total  (int wid);
+```
+
+#### Sparkline
+
+Gráfico de barras en una sola fila usando `▁▂▃▄▅▆▇█`.
+
+```c
+int  pw_sparkline_create  (int parent_wid);
+void pw_sparkline_set_data(int wid, const float *data, int count);
+// Los valores se normalizan automáticamente al rango [min, max].
+```
+
+#### Digits
+
+Números de gran tamaño (3 filas) trazados con box-drawing characters.
+
+```c
+int  pw_digits_create  (const char *text, int parent_wid);
+void pw_digits_set_text(int wid, const char *text);
+// Caracteres soportados: 0-9  :  .  ,  +  -  (espacio)
+```
+
+#### LoadingIndicator
+
+Spinner de braille animado `⣾⣽⣻⢿⡿⣟⣯⣷`. El widget NO registra un timer propio.
+
+```c
+int  pw_loading_create(int parent_wid);
+void pw_loading_start (int wid);
+void pw_loading_stop  (int wid);
+void pw_loading_tick  (int wid, int elapsed_ms);  // avanza la animación
+```
+
+Uso típico en el loop:
+
+```c
+int fired = pa_tick_timers(elapsed_ms);
+if (fired == my_timer) pw_loading_tick(spinner_wid, elapsed_ms);
+```
+
+#### Markdown
+
+Renderizador Markdown de solo lectura. Tamaño `fr(1) × fr(1)`.
+
+```c
+int  pw_markdown_create  (int parent_wid);
+void pw_markdown_set_text(int wid, const char *text);
+```
+
+Sintaxis soportada:
+
+| Elemento | Sintaxis |
+|----------|----------|
+| Encabezados | `# H1`  `## H2`  `### H3` |
+| Negrita | `**texto**` |
+| Cursiva | `*texto*` |
+| Código inline | `` `código` `` |
+| Viñetas | `- item` o `* item` |
+
+---
+
+### Sistema
+
+#### Header
+
+Barra de título anclada al borde superior (`height=1`). Muestra icono + título centrado + reloj opcional.
+
+```c
+int  pw_header_create   (const char *title, const char *icon, int parent_wid);
+// icon: string UTF-8 corto (emoji OK). NULL = sin icono.
+void pw_header_set_title(int wid, const char *title);
+void pw_header_set_icon (int wid, const char *icon);
+void pw_header_set_clock(int wid, int show);   // 1=mostrar reloj, 0=ocultar
+void pw_header_tick     (int wid);             // actualiza el texto del reloj
+```
+
+Llama a `pw_header_tick()` una vez por tick del loop cuando el reloj está activo.
+
+#### Footer
+
+Barra de atajos anclada al borde inferior (`height=1`). Muestra pares `[tecla] descripción`.
+
+```c
+int  pw_footer_create    (int parent_wid);
+void pw_footer_add_key   (int wid, const char *key_label, const char *description);
+// Máximo 16 hints por footer.
+void pw_footer_clear_keys(int wid);
+void pw_footer_refresh   (int wid);   // rebuild manual (add/clear lo llaman ya)
+```
+
+---
+
+### Interactivos — toggles
+
+#### ToggleButton
+
+Base de Checkbox y Switch. Texto `○ label` (desmarcado) / `● label` (marcado). Focusable.
+
+```c
+int  pw_toggle_create     (const char *label, int checked, int parent_wid);
+void pw_toggle_set_checked(int wid, int checked);
+int  pw_toggle_get_checked(int wid);
+void pw_toggle_set_label  (int wid, const char *label);
+void pw_toggle_toggle     (int wid);   // invierte el estado
+```
+
+#### Checkbox
+
+`[ ] label` (desmarcado) / `[X] label` (marcado). Comparte infraestructura con ToggleButton.
+
+```c
+int  pw_checkbox_create     (const char *label, int checked, int parent_wid);
+void pw_checkbox_set_checked(int wid, int checked);
+int  pw_checkbox_get_checked(int wid);
+void pw_checkbox_set_label  (int wid, const char *label);
+void pw_checkbox_toggle     (int wid);
+```
+
+#### Switch
+
+Interruptor deslizante. Ancho siempre 4 celdas. `○╺━━` (off) / `━━╸●` (on).
+
+```c
+int  pw_switch_create    (int active, int parent_wid);
+void pw_switch_set_active(int wid, int active);
+int  pw_switch_get_active(int wid);
+void pw_switch_toggle    (int wid);
+```
+
+#### Button
+
+Botón clickeable con borde CSS. Focusable. Variantes de color opcionales.
+
+```c
+int  pw_button_create   (const char *label, const char *variant, int parent_wid);
+// variant: NULL/"default" | "primary" | "success" | "warning" | "error"
+void pw_button_set_label(int wid, const char *label);
+```
+
+---
+
+### Interactivos — selección
+
+#### RadioButton / RadioSet
+
+`◯ label` (desmarcado) / `◉ label` (marcado). Normalmente gestionados por un `RadioSet`.
+
+```c
+// RadioButton individual (uso libre)
+int  pw_radio_create     (const char *label, int checked, int parent_wid);
+void pw_radio_set_checked(int wid, int checked);
+int  pw_radio_get_checked(int wid);
+
+// RadioSet — contenedor con exclusión mutua
+int  pw_radioset_create      (int parent_wid);
+int  pw_radioset_add         (int set_wid, const char *label);  // devuelve wid del radio
+void pw_radioset_select      (int set_wid, int index);
+int  pw_radioset_get_selected(int set_wid);   // índice del radio activo
+int  pw_radioset_count       (int set_wid);
+// El primer radio añadido se selecciona automáticamente.
+```
+
+#### OptionList
+
+Lista scrollable con cursor `▸`. Un único ítem activo.
+
+```c
+int  pw_optionlist_create     (int parent_wid);
+int  pw_optionlist_add_option (int wid, const char *text);  // devuelve índice
+void pw_optionlist_clear      (int wid);
+void pw_optionlist_set_cursor (int wid, int index);
+int  pw_optionlist_get_cursor (int wid);
+void pw_optionlist_cursor_next(int wid);
+void pw_optionlist_cursor_prev(int wid);
+int  pw_optionlist_count      (int wid);
+// El cursor se sujeta en los extremos (sin wrap).
+```
+
+#### ListView
+
+Lista scrollable con cursor `▶`. API idéntica a OptionList.
+
+```c
+int  pw_listview_create     (int parent_wid);
+int  pw_listview_add_item   (int wid, const char *text);
+void pw_listview_clear      (int wid);
+void pw_listview_set_cursor (int wid, int index);
+int  pw_listview_get_cursor (int wid);
+void pw_listview_cursor_next(int wid);
+void pw_listview_cursor_prev(int wid);
+int  pw_listview_count      (int wid);
+```
+
+#### SelectionList
+
+Lista multi-selección. Render: `▸ [X] item` (cursor + seleccionado) / `  [ ] item` (normal).
+
+```c
+int  pw_selectionlist_create          (int parent_wid);
+int  pw_selectionlist_add_option      (int wid, const char *text, int initially_selected);
+void pw_selectionlist_clear           (int wid);
+void pw_selectionlist_set_cursor      (int wid, int index);
+int  pw_selectionlist_get_cursor      (int wid);
+void pw_selectionlist_cursor_next     (int wid);
+void pw_selectionlist_cursor_prev     (int wid);
+void pw_selectionlist_toggle_selection(int wid, int index);
+void pw_selectionlist_set_selected    (int wid, int index, int selected);
+int  pw_selectionlist_is_selected     (int wid, int index);
+int  pw_selectionlist_count           (int wid);
+```
+
+---
 
 ### Contenedores y overlays
 
-| Widget | Función de creación | Descripción |
-|--------|---------------------|-------------|
-| ContentSwitcher | `pw_switcher_create(parent)` | Muestra exactamente un hijo a la vez |
-| Toast | `pw_toast_create(message, duration_ms, parent)` | Notificación flotante con auto-dismiss |
+#### ContentSwitcher
+
+Muestra exactamente un hijo a la vez; oculta el resto. Sin visual propio.
+
+```c
+int  pw_switcher_create(int parent_wid);
+int  pw_switcher_add   (int switcher_wid, int child_wid);  // devuelve slot index
+void pw_switcher_show  (int switcher_wid, int index);
+int  pw_switcher_active(int switcher_wid);   // índice visible (-1 si vacío)
+int  pw_switcher_count (int switcher_wid);
+// El primer hijo añadido es visible; el resto quedan ocultos.
+```
+
+#### Toast
+
+Notificación flotante con auto-dismiss. Se ancla al borde inferior del padre.
+
+```c
+int  pw_toast_create    (const char *message, int duration_ms, int parent_wid);
+void pw_toast_show      (int wid, const char *message, int duration_ms);
+void pw_toast_tick      (int wid, int elapsed_ms);
+int  pw_toast_is_visible(int wid);   // 0 = ya expiró
+```
+
+Uso típico:
+
+```c
+int fired = pa_tick_timers(elapsed_ms);
+if (fired == toast_timer) pw_toast_tick(toast_wid, elapsed_ms);
+```
+
+#### Collapsible
+
+Sección expandible / colapsable con cabecera clicable.
+
+```c
+int  pw_collapsible_create      (const char *title, int parent_wid);
+int  pw_collapsible_header_wid  (int wid);   // bind click a este wid
+int  pw_collapsible_content     (int wid);   // añade hijos aquí
+void pw_collapsible_toggle      (int wid);   // expande ↔ colapsa
+int  pw_collapsible_is_collapsed(int wid);   // 1 si oculto
+```
+
+#### Tabs
+
+Barra de pestañas horizontal. Tab activa: `[Label]`, inactivas: ` Label `.
+
+```c
+int  pw_tabs_create         (int parent_wid);
+int  pw_tabs_add            (int wid, const char *label);   // devuelve índice
+void pw_tabs_register_clicks(int wid);   // llamar tras añadir todas las tabs
+int  pw_tabs_handle_click   (int wid, int bid);   // 1 si consumido
+void pw_tabs_set_active     (int wid, int index);
+int  pw_tabs_get_active     (int wid);
+void pw_tabs_next           (int wid);
+void pw_tabs_prev           (int wid);
+int  pw_tabs_count          (int wid);
+```
+
+#### TabbedContent
+
+Barra de tabs + ContentSwitcher combinados.
+
+```c
+int  pw_tabbedcontent_create         (int parent_wid);
+int  pw_tabbedcontent_add_pane       (int wid, const char *label);   // devuelve wid del pane
+void pw_tabbedcontent_register_clicks(int wid);   // llamar tras añadir todos los panes
+int  pw_tabbedcontent_handle_click   (int wid, int bid);
+void pw_tabbedcontent_set_active     (int wid, int index);
+int  pw_tabbedcontent_get_active     (int wid);
+```
+
+---
+
+### Input de texto
+
+#### Input
+
+Campo de texto de una línea con cursor `▌`. Tamaño `fr(1) × fixed(1)`. Focusable.
+
+```c
+int         pw_input_create       (const char *placeholder, int max_len, int parent_wid);
+// max_len: 0 = 255 caracteres
+void        pw_input_register_keys(int wid);          // llamar una vez tras create
+int         pw_input_handle       (int wid, int bid); // 1 si bid consumido
+const char *pw_input_get_value    (int wid);          // puntero a buffer interno; copiar
+void        pw_input_set_value    (int wid, const char *text);
+int         pw_input_is_submitted (int wid);          // 1 (y resetea) si Enter
+void        pw_input_set_password (int wid, int on);  // 1 = mostrar • en lugar de texto
+void        pw_input_tick         (int wid, int elapsed_ms); // blink del cursor
+```
+
+Teclas soportadas cuando enfocado: caracteres imprimibles, `Backspace`, `Delete`, `← →`, `Home`, `End`, `Enter`, `Ctrl+A`, `Ctrl+V`.
+
+#### TextArea
+
+Editor de texto multi-línea (hasta 64 líneas × 255 caracteres). Focusable.
+
+```c
+int         pw_textarea_create       (int parent_wid);
+void        pw_textarea_register_keys(int wid);          // llamar una vez tras create
+int         pw_textarea_handle       (int wid, int bid); // 1 si bid consumido
+const char *pw_textarea_get_text     (int wid);          // líneas separadas por '\n'
+void        pw_textarea_set_text     (int wid, const char *text);
+void        pw_textarea_tick         (int wid, int elapsed_ms); // blink + foco
+```
+
+Teclas soportadas: caracteres imprimibles, `Backspace`, `Delete`, `← → ↑ ↓`, `Home`, `End`, `Enter`, `Ctrl+A`.
+
+---
+
+### Navegación jerárquica
+
+#### Tree
+
+Árbol jerárquico con expand/collapse y cursor navegable. Focusable.
+
+```c
+int  pw_tree_create         (int parent_wid);
+int  pw_tree_add_node       (int wid, int parent_idx, const char *label, int is_leaf);
+// parent_idx = -1 → nodo raíz. Devuelve índice del nodo (0-based) o -1.
+void pw_tree_expand         (int wid, int node_idx);
+void pw_tree_collapse       (int wid, int node_idx);
+void pw_tree_toggle         (int wid);               // nodo bajo el cursor
+void pw_tree_cursor_next    (int wid);
+void pw_tree_cursor_prev    (int wid);
+void pw_tree_set_cursor     (int wid, int visible_idx);
+int  pw_tree_get_cursor     (int wid);
+int  pw_tree_get_cursor_node(int wid);   // índice de nodo en cursor (-1 si vacío)
+int  pw_tree_click_row      (int wid, int mouse_y); // mueve cursor al row clicado
+```
+
+---
+
+### Log y texto enriquecido
+
+#### Log / RichLog
+
+Log scrollable. Añade líneas al final; las más antiguas caen al llegar a 128 (ring buffer).
+
+```c
+int  pw_log_create    (int parent_wid);   // texto plano
+int  pw_richlog_create(int parent_wid);   // strip de tags [rojo], etc. antes de guardar
+void pw_log_write     (int wid, const char *line);   // válido para Log y RichLog
+void pw_log_clear     (int wid);
+int  pw_log_line_count(int wid);   // 0 … 128
+```
+
+El scroll con rueda de ratón lo gestiona automáticamente `pw_dispatch_scroll()`.
+
+---
+
+### Datos tabulares
+
+#### DataTable
+
+Tabla con scroll bidireccional, 4 modos de cursor y zebra stripes. Focusable.
+
+```c
+// Constantes de tipo de cursor
+#define PW_DT_CURSOR_NONE   0   // sin cursor visible
+#define PW_DT_CURSOR_CELL   1   // celda individual resaltada
+#define PW_DT_CURSOR_ROW    2   // fila entera resaltada (▶ marcador)
+#define PW_DT_CURSOR_COLUMN 3   // columna entera resaltada
+
+int  pw_datatable_create          (int parent_wid);
+void pw_datatable_register_keys   (int wid);   // bind ↑↓←→ PgUp PgDn Home End Enter
+int  pw_datatable_add_column      (int wid, const char *label, int width);
+// width=0 → automático. Devuelve índice de columna.
+int  pw_datatable_add_row         (int wid);   // devuelve índice de fila
+void pw_datatable_set_cell        (int wid, int row, int col, const char *text);
+void pw_datatable_clear_rows      (int wid);
+
+// Opciones visuales
+void pw_datatable_set_cursor_type (int wid, int cursor_type);   // PW_DT_CURSOR_*
+void pw_datatable_set_show_header (int wid, int show);          // 1=mostrar cabecera
+void pw_datatable_set_show_cursor (int wid, int show);
+void pw_datatable_set_zebra       (int wid, int enable);        // filas alternadas
+
+// Cursor y selección
+int  pw_datatable_get_cursor_row  (int wid);
+int  pw_datatable_get_cursor_col  (int wid);
+void pw_datatable_move_cursor     (int wid, int row, int col);  // con auto-scroll
+
+// Event loop
+int  pw_datatable_handle          (int wid, int bid);   // 1 si consumido
+int  pw_datatable_is_selected     (int wid);            // 1 (y resetea) si Enter
+```
+
+---
+
+### Compuestos
+
+#### Welcome
+
+Widget compuesto: área Markdown + Button en una sola llamada.
+
+```c
+int pw_welcome_create    (int parent_wid, const char *markdown_text, const char *button_label);
+int pw_welcome_button_wid(int wid);   // wid del Button hijo (para bind click)
+```
+
+---
+
+### Dispatch automático
+
+Llama estas funciones con cada `bid` devuelto por `pa_poll()` para que los widgets
+gestionen sus propios eventos sin código adicional en la aplicación.
+
+```c
+// Clicks en ListView, OptionList, SelectionList, RadioSet
+int pw_dispatch_click (int bid);   // 1 si consumido
+
+// Scroll de rueda de ratón en Log y RichLog
+int pw_dispatch_scroll(int bid);   // 1 si consumido
+```
 
 ---
 
@@ -305,4 +740,4 @@ cd plague-widgets && python -m unittest discover -v -s tests
 | plague-css | Estable |
 | plague-events | Estable |
 | plague-app | Estable — incluye `pa_bind_click`, `pa_mouse_pos`, timers |
-| plague-widgets | Estable — Phases 2-6 completas (21 tipos de widget) |
+| plague-widgets | Estable — Phases 2-10 completas (35 tipos de widget) |
